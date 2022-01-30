@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hash-wasm@4/dist/md5.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/flow.js/2.9.0/flow.min.js"
+            integrity="sha512-INFDFD1xV7jl324Jdh4OfH8B84OwvkMX8cp4QkIORlIpLmT5eXul1LjmyiwSdex4uw+3VjBa6xGLVPVKVPtuBQ=="
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@6.x/css/materialdesignicons.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/1.3.5/tailwind.css">
+
+</head>
+<body>
+<div id="app">
+    <v-app>
+        <v-main>
+            <div class="">
+
+                <v-stepper
+                        v-model="tool_steps"
+                        vertical
+                >
+                    <v-stepper-step :complete="tool_steps > 1" step="1" editable>
+                        Info
+                    </v-stepper-step>
+                    <v-stepper-content step="1" id="info">
+                        <p>This website is a web interface for Direct Imputing Summary association statistics of HLA
+                            variants as described in the paper: <a href="https://doi.org/10.1038/s41598-018-37840-9">Direct
+                                Imputing Summary Association Statistics for HLA Variants</a>. The R Script for offline
+                            use is at <a href="https://github.com/Ben-JWL/DISH">DISH</a>.</p>
+                        <p>The website expects the sample summary to have the following headers: SNP_id, SNP_pos,
+                            Effect_allele, Non_effect_allele, Z</p>
+                        <p>Effect Allele and Non Effect Allele must be capitalized.</p>
+                        <p>File formats supported include csv, tsv, parquet, feather</p>
+
+                        <v-expansion-panels accordion>
+                            <v-expansion-panel>
+                                <v-expansion-panel-header>How to upload your own reference files</v-expansion-panel-header>
+                                <v-expansion-panel-content>
+                                    <p>To use your own reference files, select the custom reference panel option</p>
+                                    <p>The reference file should be an LD matrix, with the reference map file providing
+                                        a map between each row in the reference and the SNP id and position</p>
+                                    <p>The reference map file headers required are SNP_id, SNP_pos, Major, Minor,
+                                        maf</p>
+                                </v-expansion-panel-content>
+                            </v-expansion-panel>
+                        </v-expansion-panels>
+                        <br>
+                        <v-btn
+                                color="primary"
+                                @click="tool_steps = 2"
+                        >
+                            Continue
+                        </v-btn>
+                    </v-stepper-content>
+                    <v-stepper-step :complete="tool_steps > 2" step="2" editable>
+                        Upload Summary Statistics
+                    </v-stepper-step>
+                    <v-stepper-content step="2" id="upload">
+                        <div class="flex flex-col">
+                            <v-select
+                                    v-model="reference_select"
+                                    :items="reference_panels"
+                                    item-text="name"
+                                    item-value="abbr"
+                                    label="Reference Panel"
+                                    :rules="[v => !!v || 'Reference is required']"
+                                    placeholder="Select a reference"
+                                    return-object>
+                            </v-select>
+                            <div id="custom-file-select" v-show="reference_select['name'] === 'Custom'">
+                                <div class="flex flex-row">
+                                    <v-btn class="p-4 border-4 border-indigo-500/75" id="reference-file">Upload
+                                        Reference File
+                                    </v-btn>
+                                </div>
+                                <div class="flex flex-row">
+                                    <input type="text" class="p-4 border-4 border-indigo-500/70"
+                                           id="reference-file-hash" placeholder="Reference File Hash"
+                                           v-bind:value="reference_file_hash">
+                                </div>
+                                <v-progress-linear
+                                        v-model="reference_hash_progress"
+                                        :buffer-value="reference_hash_progress_buffer"
+                                ></v-progress-linear>
+                                <div class="flex flex-col">
+                                    <div class="flex flex-row">
+                                        <v-btn class="p-4 border-4 border-indigo-500/75" id="reference-map">Upload
+                                            Reference Map File
+                                        </v-btn>
+                                    </div>
+                                    <div class="flex flex-row">
+                                        <input type="text" class="p-4 border-4 border-indigo-500/75"
+                                               id="reference-map-hash" placeholder="Reference Map File Hash"
+                                               v-bind:value="reference_map_hash">
+
+                                    </div>
+                                    <v-progress-linear
+                                            v-model="reference_map_hash_progress"
+                                            :buffer-value="reference_map_hash_progress_buffer"
+                                    ></v-progress-linear>
+                                </div>
+                            </div>
+                            <div class="flex flex-col">
+                                <div class="flex flex-row">
+                                    <v-btn class="p-4 border-4 border-indigo-500/75" id="summary-stats">Upload Summary
+                                        Statistics
+                                    </v-btn>
+                                </div>
+                                <div class="flex flex-row">
+                                    <input type="text" class="p-4 border-4 border-indigo-500/75" id="summary-stats-hash"
+                                           placeholder="Summary Statistics Hash" v-bind:value="summary_stats_hash">
+                                </div>
+                                <v-progress-linear
+                                        v-model="summary_hash_progress"
+                                        :buffer-value="summary_hash_progress_buffer"
+                                ></v-progress-linear>
+                            </div>
+                            <v-radio-group
+                                    v-model="genome_build"
+                                    row
+                            >
+                                <v-radio
+                                        label="Hg18"
+                                        value="POS18"
+                                ></v-radio>
+                                <v-radio
+                                        label="Hg19"
+                                        value="POS19"
+                                ></v-radio>
+                            </v-radio-group>
+                        </div>
+                        <v-btn
+                                color="primary"
+                                @click="upload_selected();">
+                            Continue
+                        </v-btn>
+                    </v-stepper-content>
+                    <!--
+                    <v-stepper-step :complete="tool_steps > 3" step="3">
+                        Edit Headers
+                    </v-stepper-step>
+                <v-stepper-content step="3" id="column-edit" class="flex flex-col items-center">
+                    <div v-if="reference_head['sentinel'] === undefined" class="flex flex-col">
+                        <div class="flex flex-row" id="header-row">
+                            <div class="flex flex-col" v-for="header in reference_head['columns']">
+                                <input class="p-4 border-4 border-indigo-500/75" v-model="reference_head['columns'][reference_head['columns'].indexOf(header)]">
+                                <div v-for="index in reference_head['index']" class="flex flex-row">
+                                    <span class="p-4 border-4 border-indigo-500/75 flex-grow">[[ reference_head['data'][index][reference_head['columns'].indexOf(header)] ]]</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    [[reference_shape]]
+                    <div v-if="reference_map_head['sentinel'] === undefined" class="flex flex-col">
+                        <div class="flex flex-row" id="header-row">
+                            <div class="flex flex-col" v-for="header in reference_map_head['columns']">
+                                <input class="p-4 border-4 border-indigo-500/75" v-model="reference_map_head['columns'][reference_map_head['columns'].indexOf(header)]">
+                                <div v-for="index in reference_map_head['index']" class="flex flex-row">
+                                    <span class="p-4 border-4 border-indigo-500/75 flex-grow">[[ reference_map_head['data'][index][reference_map_head['columns'].indexOf(header)] ]]</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    [[reference_map_shape]]
+                    <div v-if="summary_stats_head['sentinel'] === undefined" class="flex flex-col">
+                        <div class="flex flex-row" id="header-row">
+                            <div class="flex flex-col" v-for="header in summary_stats_head['columns']">
+                                <input class="p-4 border-4 border-indigo-500/75" v-model="summary_stats_head['columns'][summary_stats_head['columns'].indexOf(header)]">
+                                <div v-for="index in summary_stats_head['index']" class="flex flex-row">
+                                    <span class="p-4 border-4 border-indigo-500/75 flex-grow">[[ summary_stats_head['data'][index][summary_stats_head['columns'].indexOf(header)] ]]</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    [[summary_stats_shape]]
+                    <v-btn
+                color="primary"
+                @click="tool_steps = 4"
+              >
+                Continue
+              </v-btn>
+                </v-stepper-content>
+                    -->
+                    <v-stepper-step :complete="tool_steps > 3" step="3">
+                        Perform analysis
+                    </v-stepper-step>
+                    <v-stepper-content step="3" id="results">
+                        <div class="flex flex-col">
+                        <v-btn v-if="loaded_result['result']"><a :href="download_link">Download</a></v-btn>
+                        <v-btn v-else class="p-4 border-4 border-indigo-500/75" @click="analyze()">[[ loaded_result ? loaded_result['status'] : 'Analyze' ]]</v-btn>
+                            <v-progress-linear
+                                        v-model="analysis_progress"
+                                        stream
+                                ></v-progress-linear>
+                        </div>
+                    </v-stepper-content>
+                </v-stepper>
+            </div>
+        </v-main>
+    </v-app>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
+<script>
+
+    const app = new Vue({
+        el: '#app',
+        vuetify: new Vuetify(),
+        data: {
+            tool_steps: 1,
+            reference_select: '',
+            reference_panels: [
+                {
+                    'name': 'European',
+                    'abbr': 'EUR',
+                    'hashes': {
+                        'hash': 'ed754e262a96b4f685dae01692acbad5',
+                        'map_hash': '4bb95abf0ccbb5122b67756a3c219984',
+                    }
+                },
+                {
+                    'name': 'Asian',
+                    'abbr': 'ASN',
+                    'hashes': {
+                        'hash': 'abefb1928ba6164b301a0b1104338953',
+                        'map_hash': '6d058533cd8707f76239a310e7125073',
+                    }
+                },
+                {
+                    'name': 'Custom',
+                    'abbr': 'CUS',
+                    'hashes': {
+                        'hash': '',
+                        'map_hash': '',
+                    }
+                }
+            ],
+            genome_build: 'POS18',
+            reference_file_hash: '',
+            reference_map_hash: '',
+            summary_stats_hash: '',
+            reference_hash_computed: '',
+            reference_map_hash_computed: '',
+            reference_file: '',
+            reference_map: '',
+            summary_stats: '',
+            reference_head: {'sentinel': true},
+            reference_map_head: {'sentinel': true},
+            summary_stats_head: {'sentinel': true},
+            result: '',
+            loaded_result: '',
+            summary_hash_progress: 0,
+            summary_hash_progress_buffer: 0,
+            reference_hash_progress: 0,
+            reference_map_hash_progress: 0,
+            reference_hash_progress_buffer: 0,
+            reference_map_hash_progress_buffer: 0,
+            analysis_progress: 0,
+            analysis_interval_id: 0,
+        },
+        methods: {
+            search_reference: function () {
+
+            },
+            analyze: function () {
+
+                fetch('/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        reference_file_hash: this.reference_hash_computed,
+                        reference_map_hash: this.reference_map_hash_computed,
+                        summary_stats_hash: this.summary_stats_hash,
+                        genome_build: this.genome_build,
+                        custom: this.reference_select['name'] === 'Custom',
+                    })
+                }).then(response => response.json()).then(data => {
+                    this.result = data.result;
+                    this.analysis_interval_id = setInterval(() => {
+                        this.load();
+                    }, 1000);
+                });
+            },
+            upload_selected: function () {
+                if (this.reference_select === '') {
+                    alert("Please select a reference panel.");
+                    return;
+                }
+                if (this.reference_select['name'] === 'Custom') {
+                    this.reference_hash_computed = this.reference_file_hash;
+                } else {
+                    this.reference_hash_computed = this.reference_select['hashes']['hash'];
+                }
+                if (this.reference_select['name'] === 'Custom') {
+                    this.reference_map_hash_computed = this.reference_map_hash;
+                } else {
+                    this.reference_map_hash_computed = this.reference_select['hashes']['map_hash'];
+                }
+
+                if (this.reference_hash_computed === '' || this.reference_map_hash_computed === '' || this.summary_stats_hash === '') {
+                    alert('Please upload all files');
+                    return;
+                }
+                if (flow_summary.isUploading() || flow_reference.isUploading() || flow_reference_map.isUploading()) {
+                    alert('Please wait for all files to finish uploading');
+                    return;
+                }
+                this.loaded_result = '';
+                this.download_link = '';
+                this.analysis_progress = 0;
+                this.tool_steps = 3;
+
+                /*
+                fetch('/header/' + this.reference_hash_computed).then(res => {
+                    res.text().then(text => {
+                        this.reference_head = JSON.parse(text);
+                    });
+                });
+                fetch('/header/' + this.reference_map_hash_computed).then(res => {
+                    res.text().then(text => {
+                        this.reference_map_head = JSON.parse(text);
+                    });
+                });
+                fetch('/header/' + this.summary_stats_hash).then(res => {
+                    res.text().then(text => {
+                        this.summary_stats_head = JSON.parse(text);
+                    });
+                });
+                */
+            },
+            load: function () {
+                fetch(this.result).then(res => {
+                    res.json().then(text => {
+                        this.loaded_result = text;
+                        if (this.loaded_result['result']) {
+                            this.analysis_progress = 100;
+                            clearInterval(this.analysis_interval_id);
+                        }
+                        else if (this.loaded_result['status'] === 'FAILURE') {
+                            clearInterval(this.analysis_interval_id);
+                        }
+                        else {
+                            this.analysis_progress = this.loaded_result['progress'] * 100;
+                        }
+                    });
+                });
+            },
+            download: function () {
+                fetch('/result/' + this.loaded_result['result'])
+            }
+        },
+        computed: {
+            reference_shape: function () {
+                if (this.reference_head['sentinel'] === undefined) {
+                    return this.reference_head['shape'];
+                }
+                return '';
+            },
+            reference_map_shape: function () {
+                if (this.reference_map_head['sentinel'] === undefined) {
+                    return this.reference_map_head['shape'];
+                }
+                return '';
+            },
+            summary_stats_shape: function () {
+                if (this.summary_stats_head['sentinel'] === undefined) {
+                    return this.summary_stats_head['shape'];
+                }
+                return '';
+            },
+            download_link: function () {
+                if (typeof this.loaded_result['result'] === 'string') {
+                    return '/result/' + this.loaded_result['result'];
+                }
+                return '';
+            }
+
+        },
+        delimiters: ['[[', ']]']
+    });
+
+
+    const files = {};
+
+    const chunkSizeHash = 64 * 1024 * 1024;
+    const fileReader = new FileReader();
+    let hasher = null;
+
+    function hashChunk(chunk) {
+        return new Promise((resolve, reject) => {
+            fileReader.onload = async (e) => {
+                const view = new Uint8Array(e.target.result);
+                hasher.update(view);
+                resolve();
+            };
+
+            fileReader.readAsArrayBuffer(chunk);
+        });
+    }
+
+    const readFile = async (file, progress) => {
+        if (hasher) {
+            hasher.init();
+        } else {
+            hasher = await hashwasm.createMD5();
+        }
+
+        const chunkNumber = Math.floor(file.size / chunkSizeHash);
+
+        for (let i = 0; i <= chunkNumber; i++) {
+            app.$data[progress] = i / (chunkNumber + 1) * 100;
+            const chunk = file.slice(
+                chunkSizeHash * i,
+                Math.min(chunkSizeHash * (i + 1), file.size)
+            );
+            await hashChunk(chunk);
+        }
+
+        app.$data[progress] = 100;
+
+        const hash = hasher.digest();
+        return Promise.resolve(hash);
+    };
+
+
+    const flow_reference = new Flow({
+        target: '/upload',
+        maxChunkRetries: 5,
+    });
+
+    const flow_reference_map = new Flow({
+        target: '/upload',
+        maxChunkRetries: 5,
+    });
+
+    const flow_summary = new Flow({
+        target: '/upload',
+        maxChunkRetries: 5,
+    });
+
+    const add_file_handler = function (file, event, hash_target, progress_target, flow_target) {
+        if (files[file.name]) {
+            file.uniqueIdentifier = files[file.name];
+            app.$data[hash_target] = files[file.name];
+            console.log(hash_target);
+        } else {
+            readFile(file.file, progress_target).then(hash => {
+                file.uniqueIdentifier = hash;
+                app.$data[hash_target] = hash;
+                files[file.name] = hash;
+                eval(flow_target).upload();
+                app.$data[progress_target] = 100;
+            });
+        }
+    }
+
+    const success_handler = function (file, message, header_name) {
+        fetch('/finished', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                file: file.name,
+                hash: file.uniqueIdentifier,
+                size: file.size,
+            }),
+            keepalive: true,
+        }).then(res => {
+        });
+        console.log(file, message);
+        return true;
+    }
+
+    const progress_handler = function (flow_name, progress_bar_name) {
+        app.$data[progress_bar_name] = eval(flow_name).progress() * 100;
+    }
+
+    flow_reference.on('fileAdded', (file, event) => add_file_handler(file, event, 'reference_file_hash', 'reference_hash_progress_buffer', 'flow_reference'));
+    flow_reference_map.on('fileAdded', (file, event) => add_file_handler(file, event, 'reference_map_hash', 'reference_map_hash_progress_buffer', 'flow_reference_map'));
+    flow_summary.on('fileAdded', (file, event) => add_file_handler(file, event, 'summary_stats_hash', 'summary_hash_progress_buffer', 'flow_summary'));
+
+    flow_reference.on('progress', () => progress_handler('flow_reference', 'reference_hash_progress'));
+    flow_reference_map.on('progress', () => progress_handler('flow_reference_map', 'reference_map_hash_progress'));
+    flow_summary.on('progress', () => progress_handler('flow_summary', 'summary_hash_progress'));
+
+    flow_reference.assignBrowse(document.getElementById('reference-file'), false, true, {'accept': '.csv, .tsv, .pq, .parquet, .parq, .feather'});
+    flow_reference_map.assignBrowse(document.getElementById('reference-map'), false, true, {'accept': '.csv, .tsv, .pq, .parquet, .parq, .feather'});
+    flow_summary.assignBrowse(document.getElementById('summary-stats'), false, true, {'accept': '.csv, .tsv, .pq, .parquet, .parq, .feather'});
+
+
+    flow_reference.on('fileSuccess', (file, message) => success_handler(file, message));
+    flow_reference_map.on('fileSuccess', (file, message) => success_handler(file, message));
+    flow_summary.on('fileSuccess', (file, message) => success_handler(file, message));
+
+</script>
+</body>
+</html>
