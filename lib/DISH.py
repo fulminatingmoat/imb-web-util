@@ -1,15 +1,12 @@
 import hashlib
 import os
 import shutil
-import sys
-import traceback
 
 import celery.exceptions
-import pandas as pd
-import scipy.stats as st
-import scipy.linalg as la
 import numpy as np
-import math
+import pandas as pd
+import scipy.linalg as la
+import scipy.stats as st
 
 COMPRESSED_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'static', 'compressed')
 TASK_RESULT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'static', 'task_results')
@@ -147,9 +144,11 @@ def impute(self, reference_panel=DEFAULT_REFERENCE_PANEL, summary=SAMPLE_SUMMARY
                 md5_hash.update(byte_block)
         shutil.move(os.path.join(TASK_RESULT_DIR, filename), os.path.join(RESULT_DIR, f"{md5_hash.hexdigest()}.tsv"))
 
-        self.update_state(state='SUCCESS', meta={'progress': 1, 'total': 1, 'status': 'Done', 'result': md5_hash.hexdigest()})
+        self.update_state(state='SUCCESS',
+                          meta={'progress': 1, 'total': 1, 'status': 'Done', 'result': md5_hash.hexdigest()})
 
-        return {'filename': f"{filename}.tsv", 'md5_hash': md5_hash.hexdigest()}
+        return {'filename': f"{filename}.tsv", 'md5_hash': md5_hash.hexdigest(), 'progress': 1, 'total': 1,
+                'status': 'Done', 'result': md5_hash.hexdigest()}
 
 
 def normalise(self, summary, reference_panel):

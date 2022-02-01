@@ -2,7 +2,8 @@ import hashlib
 import os
 
 import pandas as pd
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response, send_from_directory
+from flask import Flask, render_template, request, url_for, jsonify, Response, send_from_directory
+
 from ext import make_celery
 from lib import impute
 
@@ -14,8 +15,10 @@ COMPRESSED_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'stati
 app = Flask(__name__)
 
 app.config.update(
-    broker_url='amqp://fulminatingmoat:initialpassword@172.16.11.7:49156/imb',
-    result_backend='redis://172.16.11.7:49153/0'
+    broker_url='sqla+sqlite:///celerybroker.sqlite',
+    result_backend='db+sqlite:///celeryresult.sqlite',
+    # broker_url='amqp://fulminatingmoat:initialpassword@172.16.11.7:49156/imb',
+    # result_backend='redis://172.16.11.7:49153/0'
 )
 
 
@@ -134,14 +137,12 @@ def combine():
         return Response(status=529)
 
 
-@app.route('/header/<file_hash>', methods=['GET'])
-def get_header(file_hash):
-    file = pd.read_pickle(os.path.join(COMPRESSED_DIR, f"{file_hash}.pkl"))
-    head = file.head(3).iloc[:, :6]
-    #return jsonify(head.to_dict())
-    data = head.to_dict(orient='split')
-    data['shape'] = file.shape
-    return jsonify(data)
+@app.route('/check/<file_hash>', methods=['GET'])
+def check_exist(file_hash):
+    if file_hash in list(map(lambda x: x.split('.')[0], os.listdir(COMPLETED_DIR))):
+        return Response(status=200)
+    else:
+        return Response(status=204)
 
 
 @app.route('/analyze' , methods=['POST'])
@@ -191,7 +192,7 @@ def taskstatus(task_id):
 
 @app.route('/result/<result_hash>')
 def serve_result(result_hash):
-    return send_from_directory(os.path.join(RESULT_DIR), f"{result_hash}.tsv")
+    return send_from_directory(os.path.join(RESULT_DIR), f"{result_hash}.tsv", as_attachment=True)
 
 
 if __name__ == '__main__':
