@@ -46,8 +46,6 @@ Site file needs domain name website is hosted on under instead of [[SERVER_NAME]
 
 /etc/nginx/sites-available/flask-web-util
 
-`ln -s /etc/nginx/sites-available/flask-web-util /etc/nginx/sites-enabled`
-
 ```
 server {
         server_name [[SERVER_NAME]];
@@ -68,6 +66,16 @@ server {
         }
 }
 ```
+
+`ln -s /etc/nginx/sites-available/flask-web-util /etc/nginx/sites-enabled`
+
+#### DISH provided reference files
+
+/srv/flask-web-util/static/compressed/
+
+https://cloud.fulminatingmoat.com/s/QZtgHP6r4SfSXjC
+
+https://cloud.fulminatingmoat.com/s/4rFJy66ZFmqbSna
 
 ### Upload flow
 
