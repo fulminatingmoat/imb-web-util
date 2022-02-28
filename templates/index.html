@@ -22,15 +22,15 @@
                 <v-expansion-panels multiple accordion v-model="panel">
                     <v-expansion-panel>
                         <v-expansion-panel-header>
-                            <div class="text-center text-2xl">
+                            <div class="text-c0enter text-2xl">
                                 Imputing HLA variants using GWAS summary statistics
                             </div>
                         </v-expansion-panel-header>
                         <v-expansion-panel-content>
                             <p>This website is a web interface for Direct Imputing Summary association statistics of HLA
                                 variants as described in the paper: <a
-                                        href="https://doi.org/10.1038/s41598-018-37840-9">Direct
-                                    Imputing Summary Association Statistics for HLA Variants</a>. The R Script for
+                                        href="https://doi.org/10.1038/s41598-018-37840-9">Understanding HLA associations
+                                    from SNP summary association statistics</a>. The R Script for
                                 offline
                                 use is at <a href="https://github.com/Ben-JWL/DISH">DISH</a>.</p>
 
@@ -82,6 +82,12 @@
                                                     value="POS19"
                                             ></v-radio>
                                         </v-radio-group>
+                                    </div>
+                                    <div>
+                                        <v-text-field
+                                                v-model="maf"
+                                                label="Minimum allele frequency"
+                                        ></v-text-field>
                                     </div>
                                     <div class="grow"></div>
                                 </div>
@@ -173,6 +179,9 @@
                     </div>
                     <div class="grow"></div>
                 </div>
+                <div class="text-center font-bold text-red-500">
+                    [[ error_message]]
+                </div>
             </div>
         </v-main>
     </v-app>
@@ -186,13 +195,14 @@
         data: {
             analysis_interval_id: 0,
             analysis_progress: 0,
+            error_message: '',
             genome_build: 'POS18',
             loaded_result: '',
+            maf: 0.005,
             panel: [0, 1, 2, 3],
             reference: 0,
-            reference_file: '',
             reference_filename: '',
-            reference_file_hash: '',
+            reference_hash: '',
             reference_hash_computed: '',
             reference_progress: 0,
             reference_progress_buffer: 0,
@@ -222,7 +232,6 @@
                     }
                 }
             ],
-            reference_map: '',
             reference_map_filename: '',
             reference_map_hash: '',
             reference_map_hash_computed: '',
@@ -232,23 +241,25 @@
             summary_filename: '',
             summary_progress: 0,
             summary_progress_buffer: 0,
-            summary_stats: '',
-            summary_stats_hash: '',
+            summary_hash: '',
         },
         methods: {
             analyze: function () {
                 if (this.upload_selected()) {
+                    // Requests analysis with the selected files, check status every second
                     fetch('/analyze', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
-                            reference_file_hash: this.reference_hash_computed,
+                            function: "GWAS2HLA",
+                            reference_hash: this.reference_hash_computed,
                             reference_map_hash: this.reference_map_hash_computed,
-                            summary_stats_hash: this.summary_stats_hash,
+                            summary_hash: this.summary_hash,
                             genome_build: this.genome_build,
                             custom: this.reference_select['name'] === 'Custom',
+                            maf: this.maf,
                         })
                     }).then(response => response.json()).then(data => {
                         this.result = data.result;
@@ -259,26 +270,26 @@
                 }
             },
             upload_selected: function () {
+                // Ensures a reference genome is selected
                 if (this.reference_select === '') {
                     alert("Please select a reference panel.");
                     return;
                 }
+                // Set reference hashes based on selected panel
                 if (this.reference_select['name'] === 'Custom') {
-                    this.reference_hash_computed = this.reference_file_hash;
-                } else {
-                    this.reference_hash_computed = this.reference_select['hashes']['hash'];
-                }
-                if (this.reference_select['name'] === 'Custom') {
+                    this.reference_hash_computed = this.reference_hash;
                     this.reference_map_hash_computed = this.reference_map_hash;
                 } else {
+                    this.reference_hash_computed = this.reference_select['hashes']['hash'];
                     this.reference_map_hash_computed = this.reference_select['hashes']['map_hash'];
                 }
-
-                if (this.reference_hash_computed === '' || this.reference_map_hash_computed === '' || this.summary_stats_hash === '') {
+                // Ensures all relevant files have been uploaded
+                if (this.reference_hash_computed === '' || this.reference_map_hash_computed === '' || this.summary_hash === '') {
                     alert('Please upload all files');
                     return;
                 }
-                if (flow_summary.isUploading() || flow_reference.isUploading() || flow_reference_map.isUploading()) {
+                // If uploads are in progress, block analysis
+                if (summary_flow.isUploading() || reference_flow.isUploading() || reference_map_flow.isUploading()) {
                     alert('Please wait for all files to finish uploading');
                     return;
                 }
@@ -289,6 +300,7 @@
                 return true;
             },
             load: function () {
+                // Loads the download link once analysis is complete
                 fetch(this.result).then(res => {
                     res.json().then(text => {
                         this.loaded_result = text;
@@ -296,8 +308,10 @@
                             this.analysis_progress = 100;
                             clearInterval(this.analysis_interval_id);
                             window.location.href = this.download_link;
-                        } else if (this.loaded_result['status'] === 'FAILURE') {
+                        } else if (this.loaded_result['state'] === 'FAILURE') {
                             clearInterval(this.analysis_interval_id);
+                            this.error_message = this.loaded_result['status'];
+                            this.loaded_result = '';
                         } else {
                             this.analysis_progress = this.loaded_result['progress'] * 100;
                         }
@@ -305,6 +319,7 @@
                 });
             },
             check: function (hash) {
+                // Checks if a file has been uploaded before
                 return fetch('/check/' + hash).then(res => {
                     return res.status === 200
                 })
@@ -322,6 +337,7 @@
             },
 
         },
+        // Jinja uses curly brackets for templating, tell vue to use square brackets
         delimiters: ['[[', ']]']
     });
 
@@ -369,45 +385,54 @@
     };
 
 
-    const flow_reference = new Flow({
+    const reference_flow = new Flow({
         target: '/upload',
         maxChunkRetries: 5,
     });
 
-    const flow_reference_map = new Flow({
+    const reference_map_flow = new Flow({
         target: '/upload',
         maxChunkRetries: 5,
     });
 
-    const flow_summary = new Flow({
+    const summary_flow = new Flow({
         target: '/upload',
         maxChunkRetries: 5,
     });
 
-    const add_file_handler = function (file, event, hash_target, progress_target, flow_target) {
+    // When user selects file, upload it
+    const add_file_handler = function (file, event, base_target) {
+        app.$data[base_target + '_filename'] = file.name;
+        // If file was already uploaded in session, just set hash
         if (files[file.name]) {
-            app.$data[progress_target] = 0;
+            app.$data[base_target + '_progress'] = 0;
             file.uniqueIdentifier = files[file.name];
-            app.$data[hash_target] = files[file.name];
+            app.$data[base_target + '_hash'] = files[file.name];
         } else {
-            app.$data[progress_target] = 0;
-            readFile(file.file, progress_target + '_buffer').then(hash => {
+            // Hash the file, then upload it
+            app.$data[base_target + '_progress'] = 0;
+            readFile(file.file, base_target + '_progress_buffer').then(hash => {
                 file.uniqueIdentifier = hash;
-                app.$data[hash_target] = hash;
+                app.$data[base_target + '_hash'] = hash;
                 files[file.name] = hash;
+                // Check if file has been uploaded before by checking hash
                 app.check(hash).then(res => {
                     if (res) {
-                        app.$data[progress_target] = 100;
+                        // If yes, update progress bar to reflect that
+                        app.$data[base_target + '_progress'] = 100;
                         app.$data['loaded_result'] = '';
                     } else {
-                        eval(flow_target).upload();
+                        // If not, upload file
+                        eval((base_target + "_flow")).upload();
                     }
                 });
-                app.$data[progress_target + '_buffer'] = 100;
+                // at the end, update progress bar
+                app.$data[base_target + '_progress_buffer'] = 100;
             });
         }
     }
 
+    // When file finished uploading, tell server to combine the chunks
     const success_handler = function (file) {
         app.$data['loaded_result'] = '';
         fetch('/finished', {
@@ -424,26 +449,28 @@
         })
     }
 
+    // Function to keep progress bar updated
     const progress_handler = function (flow_name, progress_bar_name) {
         app.$data[progress_bar_name] = eval(flow_name).progress() * 100;
     }
 
-    flow_reference.on('fileAdded', (file, event) => add_file_handler(file, event, 'reference_file_hash', 'reference_progress', 'flow_reference'));
-    flow_reference_map.on('fileAdded', (file, event) => add_file_handler(file, event, 'reference_map_hash', 'reference_map_progress', 'flow_reference_map'));
-    flow_summary.on('fileAdded', (file, event) => add_file_handler(file, event, 'summary_stats_hash', 'summary_progress', 'flow_summary'));
+    // Set all event handlers
+    reference_flow.on('fileAdded', (file, event) => add_file_handler(file, event, 'reference'));
+    reference_map_flow.on('fileAdded', (file, event) => add_file_handler(file, event, 'reference_map'));
+    summary_flow.on('fileAdded', (file, event) => add_file_handler(file, event, 'summary'));
 
-    flow_reference.on('progress', () => progress_handler('flow_reference', 'reference_progress'));
-    flow_reference_map.on('progress', () => progress_handler('flow_reference_map', 'reference_map_progress'));
-    flow_summary.on('progress', () => progress_handler('flow_summary', 'summary_progress'));
+    reference_flow.on('progress', () => progress_handler('reference_flow', 'reference_progress'));
+    reference_map_flow.on('progress', () => progress_handler('reference_map_flow', 'reference_map_progress'));
+    summary_flow.on('progress', () => progress_handler('summary_flow', 'summary_progress'));
 
-    flow_reference.assignBrowse(document.getElementById('reference-file'), false, true, {'accept': '.csv, .tsv, .pq, .parquet, .parq, .feather'});
-    flow_reference_map.assignBrowse(document.getElementById('reference-map'), false, true, {'accept': '.csv, .tsv, .pq, .parquet, .parq, .feather'});
-    flow_summary.assignBrowse(document.getElementById('summary-stats'), false, true, {'accept': '.csv, .tsv, .pq, .parquet, .parq, .feather'});
+    reference_flow.assignBrowse(document.getElementById('reference-file'), false, true, {'accept': '.csv, .tsv, .pq, .parquet, .parq, .feather'});
+    reference_map_flow.assignBrowse(document.getElementById('reference-map'), false, true, {'accept': '.csv, .tsv, .pq, .parquet, .parq, .feather'});
+    summary_flow.assignBrowse(document.getElementById('summary-stats'), false, true, {'accept': '.csv, .tsv, .pq, .parquet, .parq, .feather'});
 
 
-    flow_reference.on('fileSuccess', (file, message) => success_handler(file));
-    flow_reference_map.on('fileSuccess', (file, message) => success_handler(file));
-    flow_summary.on('fileSuccess', (file, message) => success_handler(file));
+    reference_flow.on('fileSuccess', (file) => success_handler(file));
+    reference_map_flow.on('fileSuccess', (file) => success_handler(file));
+    summary_flow.on('fileSuccess', (file) => success_handler(file));
 
 </script>
 </body>

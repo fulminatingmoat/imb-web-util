@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hash-wasm@4/dist/md5.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/flow.js/2.9.0/flow.min.js"
+            integrity="sha512-INFDFD1xV7jl324Jdh4OfH8B84OwvkMX8cp4QkIORlIpLmT5eXul1LjmyiwSdex4uw+3VjBa6xGLVPVKVPtuBQ=="
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@6.x/css/materialdesignicons.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/1.3.5/tailwind.css">
+
+</head>
+<body>
+<div id="app">
+    <v-app>
+        <v-main>
+            <div class="">
+                <v-expansion-panels multiple accordion v-model="panel">
+                    <v-expansion-panel>
+                        <v-expansion-panel-header>
+                            <div class="text-center text-2xl">
+                                Imputing HLA variants using GWAS summary statistics
+                            </div>
+                        </v-expansion-panel-header>
+                        <v-expansion-panel-content>
+                            <p>This website is a web interface for Direct Imputing Summary association statistics of HLA
+                                variants as described in the paper: <a
+                                        href="https://doi.org/10.1038/s41598-018-37840-9">Direct
+                                    Imputing Summary Association Statistics for HLA Variants</a>. The R Script for
+                                offline
+                                use is at <a href="https://github.com/Ben-JWL/DISH">DISH</a>.</p>
+
+                        </v-expansion-panel-content>
+                    </v-expansion-panel>
+                    <v-expansion-panel>
+                        <v-expansion-panel-header class="text-2xl font-semibold text-white bg-blue-600">
+                            1. Select Reference Files
+                        </v-expansion-panel-header>
+                        <v-expansion-panel-content>
+                            <div class="flex flex-col pt-4">
+                                <div class="flex flex-row">
+                                    <div class="flex flex-col px-4 pr-4 w-1/4 flex-initial">
+                                        <v-btn class="p-4 border-4 border-indigo-500/75" id="reference-file">
+                                            [[ maternal_filename ? maternal_filename : 'Upload Maternal File']]
+                                        </v-btn>
+                                        <v-progress-linear
+                                                v-model="maternal_progress"
+                                                :buffer-value="maternal_progress_buffer"
+                                        ></v-progress-linear>
+                                        <v-btn class="p-4 border-4 border-indigo-500/75" id="reference-map">
+                                            [[ fetal_filename ? fetal_filename : 'Upload Fetal File']]
+                                        </v-btn>
+                                        <v-progress-linear
+                                                v-model="fetal_progress"
+                                                :buffer-value="fetal_progress_buffer"
+                                        ></v-progress-linear>
+                                    </div>
+                                    <div class="w-1/3 pr-4">Format for the files should be:
+                                        SNP, CHROMOSOME, POSITION, Effect Allele, Other allele, Beta, Standard
+                                        Error, P value
+                                    </div>
+                                    <div>
+                                        <v-text-field
+                                                v-model="LD_score_intercept"
+                                                label="LD score intercept"
+                                        ></v-text-field>
+                                        <div class="grow"></div>
+                                    </div>
+                                    <div class="grow"></div>
+                                </div>
+
+                            </div>
+                        </v-expansion-panel-content>
+                    </v-expansion-panel>
+                </v-expansion-panels>
+                <div class="flex flex-row pt-4">
+                    <div class="flex flex-col w-1/6 pl-4">
+                        <a class='w-full' :href="download_link" v-if="loaded_result['result']">
+                            <v-btn class="w-full">Download</v-btn>
+                        </a>
+                        <v-btn class="p-4 border-4 border-indigo-500/75 text-2xl font-semibold" @click="analyze()"
+                               v-else>
+                            [[ loaded_result ? loaded_result['status'] : 'Submit Job' ]]
+                        </v-btn>
+                        <v-progress-linear
+                                v-model="analysis_progress"
+                                stream
+                        ></v-progress-linear>
+                    </div>
+                    <div class="pl-4 w-1/2">
+                        After submitting, please do not refresh or move away from this page. Once the imputation is
+                        finished, a result file will be directly downloaded from this page.
+                    </div>
+                    <div class="grow"></div>
+                </div>
+                <div class="text-center font-bold text-red-500">
+                    [[ error_message]]
+                </div>
+            </div>
+        </v-main>
+    </v-app>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
+<script>
+    const app = new Vue({
+        el: '#app',
+        vuetify: new Vuetify(),
+        data: {
+            analysis_interval_id: 0,
+            analysis_progress: 0,
+            error_message: '',
+            genome_build: 'POS18',
+            loaded_result: '',
+            LD_score_intercept: 0.1352,
+            panel: [0, 1, 2, 3],
+            reference: 0,
+            maternal_filename: '',
+            maternal_hash: '',
+            maternal_progress: 0,
+            maternal_progress_buffer: 0,
+            fetal_filename: '',
+            fetal_hash: '',
+            fetal_progress: 0,
+            fetal_progress_buffer: 0,
+            result: '',
+        },
+        methods: {
+            analyze: function () {
+                if (this.upload_selected()) {
+                    // Requests analysis with the selected files, check status every second
+                    fetch('/analyze', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            function: "MATERNALFETAL",
+                            maternal_hash: this.maternal_hash,
+                            fetal_hash: this.fetal_hash,
+                            LD_score_intercept: this.LD_score_intercept,
+                        })
+                    }).then(response => response.json()).then(data => {
+                        this.result = data.result;
+                        this.analysis_interval_id = setInterval(() => {
+                            this.load();
+                        }, 1000);
+                    });
+                }
+            },
+            upload_selected: function () {
+
+                // Ensures all relevant files have been uploaded
+                if (this.maternal_hash === '' || this.fetal_hash === '') {
+                    alert('Please upload all files');
+                    return;
+                }
+                // If uploads are in progress, block analysis
+                if (maternal_flow.isUploading() || fetal_flow.isUploading()) {
+                    alert('Please wait for all files to finish uploading');
+                    return;
+                }
+                clearInterval(this.analysis_interval_id);
+                this.loaded_result = '';
+                this.analysis_progress = 0;
+                this.error_message = '';
+
+                return true;
+            },
+            load: function () {
+                // Loads the download link once analysis is complete
+                fetch(this.result).then(res => {
+                    res.json().then(text => {
+                        this.loaded_result = text;
+                        if (this.loaded_result['result']) {
+                            this.analysis_progress = 100;
+                            clearInterval(this.analysis_interval_id);
+                            window.location.href = this.download_link;
+                        } else if (this.loaded_result['state'] === 'FAILURE') {
+                            clearInterval(this.analysis_interval_id);
+                            this.error_message = this.loaded_result['status'];
+                            this.loaded_result = '';
+                        } else {
+                            this.analysis_progress = this.loaded_result['progress'] * 100;
+                        }
+                    });
+                });
+            },
+            check: function (hash) {
+                // Checks if a file has been uploaded before
+                return fetch('/check/' + hash).then(res => {
+                    return res.status === 200
+                })
+            },
+        },
+        computed: {
+            download_link: function () {
+                if (typeof this.loaded_result['result'] === 'string') {
+                    return '/result/' + this.loaded_result['result'];
+                }
+                return '';
+            },
+        },
+        // Jinja uses curly brackets for templating, tell vue to use square brackets
+        delimiters: ['[[', ']]']
+    });
+
+
+    const files = {};
+
+    const chunkSizeHash = 64 * 1024 * 1024;
+    const fileReader = new FileReader();
+    let hasher = null;
+
+    function hashChunk(chunk) {
+        return new Promise((resolve) => {
+            fileReader.onload = async (e) => {
+                const view = new Uint8Array(e.target.result);
+                hasher.update(view);
+                resolve();
+            };
+
+            fileReader.readAsArrayBuffer(chunk);
+        });
+    }
+
+    const readFile = async (file, progress) => {
+        if (hasher) {
+            hasher.init();
+        } else {
+            hasher = await hashwasm.createMD5();
+        }
+
+        const chunkNumber = Math.floor(file.size / chunkSizeHash);
+
+        for (let i = 0; i <= chunkNumber; i++) {
+            app.$data[progress] = i / (chunkNumber + 1) * 100;
+            const chunk = file.slice(
+                chunkSizeHash * i,
+                Math.min(chunkSizeHash * (i + 1), file.size)
+            );
+            await hashChunk(chunk);
+        }
+
+        app.$data[progress] = 100;
+
+        const hash = hasher.digest();
+        return Promise.resolve(hash);
+    };
+
+
+    const maternal_flow = new Flow({
+        target: '/upload',
+        maxChunkRetries: 5,
+    });
+
+    const fetal_flow = new Flow({
+        target: '/upload',
+        maxChunkRetries: 5,
+    });
+
+    // When user selects file, upload it
+    const add_file_handler = function (file, event, base_target) {
+        app.$data[base_target + '_filename'] = file.name;
+        // If file was already uploaded in session, just set hash
+        if (files[file.name]) {
+            app.$data[base_target + '_progress'] = 0;
+            file.uniqueIdentifier = files[file.name];
+            app.$data[base_target + '_hash'] = files[file.name];
+        } else {
+            // Hash the file, then upload it
+            app.$data[base_target + '_progress'] = 0;
+            readFile(file.file, base_target + '_progress_buffer').then(hash => {
+                file.uniqueIdentifier = hash;
+                app.$data[base_target + '_hash'] = hash;
+                files[file.name] = hash;
+                // Check if file has been uploaded before by checking hash
+                app.check(hash).then(res => {
+                    if (res) {
+                        // If yes, update progress bar to reflect that
+                        app.$data[base_target + '_progress'] = 100;
+                        app.$data['loaded_result'] = '';
+                    } else {
+                        // If not, upload file
+                        eval((base_target + "_flow")).upload();
+                    }
+                });
+                // at the end, update progress bar
+                app.$data[base_target + '_progress_buffer'] = 100;
+            });
+        }
+    }
+
+    // When file finished uploading, tell server to combine the chunks
+    const success_handler = function (file) {
+        app.$data['loaded_result'] = '';
+        fetch('/finished', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                file: file.name,
+                hash: file.uniqueIdentifier,
+                size: file.size,
+            }),
+            keepalive: true,
+        })
+    }
+
+    // Function to keep progress bar updated
+    const progress_handler = function (flow_name, progress_bar_name) {
+        app.$data[progress_bar_name] = eval(flow_name).progress() * 100;
+    }
+
+    // Set all event handlers
+    maternal_flow.on('fileAdded', (file, event) => add_file_handler(file, event, 'maternal'));
+    fetal_flow.on('fileAdded', (file, event) => add_file_handler(file, event, 'fetal'));
+
+    maternal_flow.on('progress', () => progress_handler('maternal_flow', 'maternal_progress'));
+    fetal_flow.on('progress', () => progress_handler('fetal_flow', 'fetal_progress'));
+
+    maternal_flow.assignBrowse(document.getElementById('reference-file'), false, true, {'accept': '.csv, .tsv, .pq, .parquet, .parq, .feather, .gz'});
+    fetal_flow.assignBrowse(document.getElementById('reference-map'), false, true, {'accept': '.csv, .tsv, .pq, .parquet, .parq, .feather, .gz'});
+
+
+    maternal_flow.on('fileSuccess', (file) => success_handler(file));
+    fetal_flow.on('fileSuccess', (file) => success_handler(file));
+
+</script>
+</body>
+</html>
