@@ -36,7 +36,7 @@ ExecStart=/srv/flask-web-util/venv/bin/gunicorn --workers 3 --bind unix:flask-we
 WantedBy=multi-user.target
 ```
 
-`systemctl daemon reload`
+`systemctl daemon-reload`
 
 `systemctl enable --now flask-web-util.service`
 
