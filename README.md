@@ -16,7 +16,7 @@
 
 `pip install -r requirements.txt`
 
-### Systemd service file
+### Systemd service files
 
 /etc/systemd/system/flask-web-util.service
 
@@ -35,10 +35,29 @@ ExecStart=/srv/flask-web-util/venv/bin/gunicorn --workers 3 --bind unix:flask-we
 [Install]
 WantedBy=multi-user.target
 ```
+/etc/systemd/system/flask-web-util-workers.service
+```
+[Unit]
+Description=Celery instance to serve the web-utils run by flask
+After=network.target
+
+[Service]
+User=root
+Group=www-data
+WorkingDirectory=/srv/flask-web-util/
+Environment="PATH=/srv/flask-web-util/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+ExecStart=/srv/flask-web-util/venv/bin/celery -A app.celery worker 
+
+[Install]
+WantedBy=multi-user.target
+```
+
 
 `systemctl daemon-reload`
 
 `systemctl enable --now flask-web-util.service`
+
+`systemctl enable --now flask-web-util-workers.service`
 
 ### NGINX site file
 
