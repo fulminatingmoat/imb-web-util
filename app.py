@@ -52,17 +52,16 @@ def convert_to_pickle(file_id, file_name):
     filepath = os.path.join(COMPLETED_DIR, filename + '.gz' if gz else '')
     pickle_filepath = os.path.join(COMPRESSED_DIR, f"{file_id}.pkl")
     if os.path.exists(filepath) and not os.path.exists(pickle_filepath):
-        match extension:
-            case 'csv':
-                pd.read_csv(filepath, sep=',').to_pickle(os.path.join(COMPRESSED_DIR, f"{file_id}.pkl"))
-            case 'tsv':
-                pd.read_csv(filepath, sep='\t').to_pickle(os.path.join(COMPRESSED_DIR, f"{file_id}.pkl"))
-            case 'txt':
-                pd.read_csv(filepath, sep=r'\s|\t|,').to_pickle(os.path.join(COMPRESSED_DIR, f"{file_id}.pkl"))
-            case 'feather':
-                pd.read_feather(filepath).to_pickle(os.path.join(COMPRESSED_DIR, f"{file_id}.pkl"))
-            case 'parquet' | 'pq':
-                pd.read_parquet(filepath).to_pickle(os.path.join(COMPRESSED_DIR, f"{file_id}.pkl"))
+        if extension == 'csv':
+            pd.read_csv(filepath, sep=',').to_pickle(os.path.join(COMPRESSED_DIR, f"{file_id}.pkl"))
+        elif extension == 'tsv':
+            pd.read_csv(filepath, sep='\t').to_pickle(os.path.join(COMPRESSED_DIR, f"{file_id}.pkl"))
+        elif extension == 'txt':
+            pd.read_csv(filepath, sep=r'\s|\t|,').to_pickle(os.path.join(COMPRESSED_DIR, f"{file_id}.pkl"))
+        elif extension == 'feather':
+            pd.read_feather(filepath).to_pickle(os.path.join(COMPRESSED_DIR, f"{file_id}.pkl"))
+        elif extension == 'parquet' or extension == 'pq':
+            pd.read_parquet(filepath).to_pickle(os.path.join(COMPRESSED_DIR, f"{file_id}.pkl"))
 
 
 # serves the dish utility webpage at https://example.com/
@@ -182,14 +181,13 @@ def check_file_exists(file_hash):
 @app.route('/analyze', methods=['POST'])
 def analyze():
     json = request.get_json()
-    match json['function']:
-        case 'GWAS2HLA':
+    if json['function'] == 'GWAS2HLA':
             result = gwas2hla_task.delay(reference_file=json['reference_hash'], map_file=json['reference_map_hash'],
                                          summary_file=json['summary_hash'],
                                          genome_build=json['genome_build'], custom=json['custom'], maf=json['maf'])
             return jsonify({'result': url_for('task_status', task_id=result.id)}), 202, {
                 'Location': url_for('task_status', task_id=result.id)}
-        case 'MATERNALFETAL':
+    elif json['function'] == 'MATERNALFETAL':
             result = maternal_fetal_task.delay(maternal_file=json['maternal_hash'],
                                                fetal_file=json['fetal_hash'], intercept=json['LD_score_intercept'])
             return jsonify({'result': url_for('task_status', task_id=result.id)}), 202, {
