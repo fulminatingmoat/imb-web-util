@@ -92,9 +92,13 @@ server {
 
 /srv/flask-web-util/static/compressed/
 
-https://cloud.fulminatingmoat.com/s/QZtgHP6r4SfSXjC
+https://cloud.fulminatingmoat.com/s/DNftRx3XjWbY5Ti
 
-https://cloud.fulminatingmoat.com/s/4rFJy66ZFmqbSna
+https://cloud.fulminatingmoat.com/s/g23ZLFaNXjFtFde
+
+https://cloud.fulminatingmoat.com/s/rAzS62qCzFYckSz
+
+https://cloud.fulminatingmoat.com/s/DsYKBXMLYDgwgxS
 
 ### Upload flow
 
