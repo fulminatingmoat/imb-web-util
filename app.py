@@ -49,7 +49,7 @@ def convert_to_pickle(file_id, file_name):
         extension = file_name.split('.')[-2]
         gz = True
     filename = f"{file_id}.{extension}"
-    filepath = os.path.join(COMPLETED_DIR, filename + '.gz' if gz else '')
+    filepath = os.path.join(COMPLETED_DIR, filename + '.gz' if gz else filename)
     pickle_filepath = os.path.join(COMPRESSED_DIR, f"{file_id}.pkl")
     if os.path.exists(filepath) and not os.path.exists(pickle_filepath):
         if extension == 'csv':
